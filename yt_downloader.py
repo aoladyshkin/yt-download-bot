@@ -20,7 +20,7 @@ def on_progress(stream, chunk, bytes_remaining):
         print(f"\r[{bar}] {pct:5.1f}%  {downloaded/1_048_576:.2f}/{total/1_048_576:.2f} MiB", end="", flush=True)
 
 def safe_filename(title: str) -> str:
-    bad = '<>:"/\\|?*'
+    bad = '<>:\"/\\|?*'
     cleaned = "".join(c for c in title if c not in bad)
     return cleaned.strip()[:120] or "video"
 
@@ -73,7 +73,7 @@ def download_video(url: str, out_dir: Path, itag: int):
     target_name = safe_filename(yt.title)
     
     # Case 1: The selected stream is audio-only
-    if stream.only_audio:
+    if stream.type == "audio":
         print("\nDownloading audio stream...")
         filepath = stream.download(output_path=str(out_dir), filename=f"{target_name}.m4a")
         print(f"\nГотово: {filepath}")
