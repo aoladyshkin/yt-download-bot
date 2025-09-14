@@ -1,108 +1,101 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import json
-import subprocess
-import os
 from pathlib import Path
-from typing import List, Optional
+from pytubefix import YouTube, Playlist
+from pytubefix.exceptions import (
+    RegexMatchError, VideoUnavailable, AgeRestrictedError, PytubeFixError
+)
 
-COOKIES_FILE = Path("cookies.txt")
+def on_progress(stream, chunk, bytes_remaining):
+    total = stream.filesize or 0
+    downloaded = total - bytes_remaining
+    if total > 0:
+        pct = downloaded * 100 / total
+        bar_len = 30
+        filled = int(bar_len * pct / 100)
+        bar = "█" * filled + "·" * (bar_len - filled)
+        print(f"\r[{bar}] {pct:5.1f}%  {downloaded/1_048_576:.2f}/{total/1_048_576:.2f} MiB", end="", flush=True)
+
+def safe_filename(title: str) -> str:
+    bad = '<>:"/\\|?*'
+    cleaned = "".join(c for c in title if c not in bad)
+    return cleaned.strip()[:120] or "video"
+
+def download_video(
+    url: str,
+    out_dir: Path,
+    audio_only: bool = False,
+    filename = None,
+    itag = None
+):
+    print(f"\n=== Обработка: {url}")
+    yt = YouTube(url, on_progress_callback=on_progress)
+    print(f"Название: {yt.title}")
+    print(f"Канал:   {yt.author}")
+
+    if itag is not None:
+        stream = yt.streams.get_by_itag(itag)
+        if stream is None:
+            raise ValueError(f"Не найден поток с itag={itag}.")
+    else:
+        if audio_only:
+            stream = (yt.streams.filter(only_audio=True, file_extension="mp4")
+                                   .order_by("abr")
+                                   .desc()
+                                   .first())
+            if stream is None:
+                stream = yt.streams.filter(only_audio=True).order_by("abr").desc().first()
+        else:
+            stream = (yt.streams.filter(progressive=True, file_extension="mp4")
+                                   .order_by("resolution")
+                                   .desc()
+                                   .first())
+
+    if stream is None:
+        raise RuntimeError("Не удалось подобрать поток для загрузки.")
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Автоматически добавляем расширение
+    if audio_only:
+        ext = ".m4a"
+    else:
+        ext = ".mp4"
+
+    target_name = filename or safe_filename(yt.title)
+    if not target_name.lower().endswith(ext):
+        target_name += ext
+
+    print(f"Формат:  itag={stream.itag}, mime={stream.mime_type}, res/abr={stream.resolution or stream.abr}")
+    print(f"Сохранение в: {out_dir.resolve()}")
+    filepath = stream.download(output_path=str(out_dir), filename=target_name)
+    print(f"\nГотово: {filepath}")
+    return filepath
 
 
+def process_youtube_url(
+    url: str,
+    out_dir: str = "downloads",
+    audio_only: bool = False,
+    filename = None,
+    itag = None
+):
+    """Основная точка входа — скачивание видео/плейлиста"""
+    out_dir = Path(out_dir)
 
-# --- YouTube загрузка ---
-def download_video_only(url, video_path):
-    subprocess.run([
-        "python3", "-m", "yt_dlp",
-        "-f", "bestvideo[height<=720]",
-        "--user-agent", "Mozilla/5.0",
-        "-o", str(video_path),
-        url
-    ])
-    return video_path
-
-def download_audio_only(url, audio_path):
-    """
-    Скачивает аудио с YouTube и конвертирует в мини-файл для Whisper-1:
-    - формат: .ogg
-    - кодек: opus
-    - моно
-    - частота дискретизации: 24 kHz
-    - битрейт: 32 kbps
-    """
-
-    audio_path = Path(audio_path).with_suffix(".ogg")
-    temp_path = audio_path.with_suffix(".temp.m4a")
-
-    # 1. Скачиваем лучший аудиотрек
-    subprocess.run([
-        "python3", "-m", "yt_dlp",
-        "-f", "bestaudio",
-        "--user-agent", "Mozilla/5.0",
-        "-o", str(temp_path),
-        url
-    ], check=True)
-
-    # 2. Конвертируем в мини-файл .ogg для Whisper-1
-    subprocess.run([
-        "ffmpeg",
-        "-i", str(temp_path),
-        "-ac", "1",          # моно
-        "-ar", "24000",      # частота дискретизации
-        "-c:a", "libopus",   # кодек Opus
-        "-b:a", "32k",       # битрейт
-        "-y",
-        str(audio_path)
-    ], check=True)
-
-    # 3. Удаляем временный скачанный файл
-    temp_path.unlink(missing_ok=True)
-
-    return audio_path
-
-
-def merge_video_audio(video_path, audio_path, output_path):
-
-    video_path = str(video_path)
-    audio_path = str(audio_path)
-    output_path = str(output_path)
-
-    # ffmpeg команда: конвертируем аудио в AAC для совместимости с MP4
-    cmd = [
-        "ffmpeg",
-        "-i", video_path,
-        "-i", audio_path,
-        "-c:v", "copy",        # копируем видео без перекодирования
-        "-c:a", "aac",         # конвертируем аудио в AAC
-        "-b:a", "128k",        # битрейт аудио
-        "-shortest",           # чтобы длительность файла была равна меньшей из видео/аудио
-        "-y",                  # перезаписываем если есть
-        output_path
-    ]
-
-    subprocess.run(cmd, check=True)
-    
-    # удаляем видео без звука
-    if os.path.exists(video_path):
-        os.remove(video_path)
-    if os.path.exists(audio_path):
-        os.remove(audio_path)
+    try:
+        return download_video(url, out_dir, audio_only=audio_only, filename=filename, itag=itag)
+    except AgeRestrictedError:
+        print("\nОшибка: ролик с возрастным ограничением.")
+    except VideoUnavailable:
+        print("\nОшибка: видео недоступно.")
+    except RegexMatchError:
+        print("\nОшибка парсинга. Обновите pytubefix.")
+    except PytubeFixError as e:
+        print(f"\nОшибка pytubefix: {e}")
+    except Exception as e:
+        print(f"\nНеожиданная ошибка: {e}")
         
-    return output_path
-
-
-# ====== твоя точка входа ======
-def process_youtube_url(url: str, download_dir: Path = Path("downloads")) -> Path:
-    
-    print("\nСкачиваю лучшее доступное качество...\n")
-    video_only = download_video_only(url, download_dir / "video_only.mp4")
-    audio_only = download_audio_only(url, download_dir / "audio_only.ogg")
-    video_full = merge_video_audio(video_only, audio_only, download_dir / "video.mp4")
-    return video_full
-
-
-# пример использования из кода:
 if __name__ == "__main__":
-    out = process_youtube_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-    print("Готово:", out)
+    process_youtube_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ")  # Пример вызова
