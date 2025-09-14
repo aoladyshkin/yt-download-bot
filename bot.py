@@ -80,8 +80,19 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
         if not url:
             await query.edit_message_text("❌ Ошибка: URL видео не найден. Пожалуйста, отправьте ссылку заново.")
             return
+        
+        # Re-fetch streams to get details of the selected format
+        streams, _ = get_video_streams(url)
+        selected_format_text = "неизвестный формат"
+        for stream_info in streams:
+            if stream_info['itag'] == itag:
+                if stream_info['type'] == 'video':
+                    selected_format_text = f"📹 {stream_info['resolution']}"
+                else:
+                    selected_format_text = f"🎵 {stream_info['abr']}"
+                break
 
-        await query.edit_message_text("⏳ Начинаю скачивание... Это может занять некоторое время.")
+        await query.edit_message_text(f"⏳ Начинаю скачивание ({selected_format_text})... Это может занять некоторое время.")
 
         output_path = process_youtube_url(url, DOWNLOAD_DIR, itag=itag)
 
