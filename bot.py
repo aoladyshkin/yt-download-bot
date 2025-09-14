@@ -3,7 +3,7 @@ import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
 
 from yt_downloader import process_youtube_url, get_video_streams
@@ -115,13 +115,20 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
             del context.user_data[url_key]
 
 
+async def post_init(application: Application) -> None:
+    """Post initialization hook for the bot."""
+    await application.bot.set_my_commands([
+        BotCommand("start", "Запустить бота"),
+    ])
+
+
 def main() -> None:
     """Запускает бота."""
     if not TELEGRAM_BOT_TOKEN:
         print("Ошибка: Токен TELEGRAM_BOT_TOKEN не найден в .env файле.")
         return
 
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
