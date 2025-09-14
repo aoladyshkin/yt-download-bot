@@ -22,6 +22,39 @@ def safe_filename(title: str) -> str:
     cleaned = "".join(c for c in title if c not in bad)
     return cleaned.strip()[:120] or "video"
 
+
+def get_video_streams(url: str):
+    """Gets available streams for a YouTube video."""
+    print(f"\n=== Getting streams for: {url}")
+    yt = YouTube(url)
+    
+    stream_options = []
+    
+    # Video streams (progressive, mp4, <=720p)
+    video_streams = yt.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc()
+    for stream in video_streams:
+        if not stream.resolution or int(stream.resolution.replace('p','')) > 720:
+            continue
+        stream_options.append({
+            "itag": stream.itag,
+            "type": "video",
+            "resolution": stream.resolution,
+            "filesize": stream.filesize,
+        })
+    
+    # Audio only streams (mp4)
+    audio_streams = yt.streams.filter(only_audio=True, file_extension="mp4").order_by("abr").desc()
+    for stream in audio_streams:
+        stream_options.append({
+            "itag": stream.itag,
+            "type": "audio",
+            "abr": stream.abr,
+            "filesize": stream.filesize,
+        })
+        
+    return stream_options, yt.title
+
+
 def download_video(
     url: str,
     out_dir: Path,
@@ -40,17 +73,21 @@ def download_video(
             raise ValueError(f"Не найден поток с itag={itag}.")
     else:
         if audio_only:
-            stream = (yt.streams.filter(only_audio=True, file_extension="mp4")
+            stream = (
+                yt.streams.filter(only_audio=True, file_extension="mp4")
                                    .order_by("abr")
                                    .desc()
-                                   .first())
+                                   .first()
+            )
             if stream is None:
                 stream = yt.streams.filter(only_audio=True).order_by("abr").desc().first()
         else:
-            stream = (yt.streams.filter(progressive=True, file_extension="mp4")
+            stream = (
+                yt.streams.filter(progressive=True, file_extension="mp4")
                                    .order_by("resolution")
                                    .desc()
-                                   .first())
+                                   .first()
+            )
 
     if stream is None:
         raise RuntimeError("Не удалось подобрать поток для загрузки.")
