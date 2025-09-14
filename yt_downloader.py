@@ -94,7 +94,7 @@ def download_video(url: str, out_dir: Path, itag: int):
     print("\nVideo part downloaded. Now downloading audio part.")
 
     # 2. Download best audio stream
-    audio_stream = yt.streams.filter(file_extension="mp4", only_audio=True).order_by("abr").desc().first()
+    audio_stream = yt.streams.filter(file_extension="mp4", type="audio").order_by("abr").desc().first()
     if not audio_stream:
         os.remove(video_temp_path)
         raise RuntimeError("No audio stream found to merge.")
@@ -110,8 +110,12 @@ def download_video(url: str, out_dir: Path, itag: int):
         '-y',  # Overwrite output file if it exists
         '-i', video_temp_path,
         '-i', audio_temp_path,
-        '-c:v', 'copy',
-        '-c:a', 'copy',
+        '-c:v', 'libx264',
+        '-preset', 'medium',
+        '-crf', '23',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-pix_fmt', 'yuv420p',
         str(final_path)
     ]
     
@@ -159,7 +163,7 @@ if __name__ == "__main__":
         print(s)
     
     # To test download, uncomment below and set an itag from the list printed above
-    # if streams:
-    #     test_itag = streams[0]['itag'] # e.g., download the first option
-    #     print(f"\nTesting download with itag {test_itag}...")
-    #     process_youtube_url(test_url, itag=test_itag)
+    if streams:
+        test_itag = streams[0]['itag'] # e.g., download the first option
+        print(f"\nTesting download with itag {test_itag}...")
+        process_youtube_url(test_url, itag=test_itag)
