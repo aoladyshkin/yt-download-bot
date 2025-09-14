@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # The command to run the bot
-CMD ["python3", "yt_downloader.py"]
+CMD ["python3", "bot.py"]
