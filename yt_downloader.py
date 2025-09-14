@@ -3,11 +3,14 @@
 
 import os
 import subprocess
+import logging
 from pathlib import Path
 from pytubefix import YouTube
 from pytubefix.exceptions import (
     RegexMatchError, VideoUnavailable, AgeRestrictedError, PytubeFixError
 )
+
+logger = logging.getLogger(__name__)
 
 def on_progress(stream, chunk, bytes_remaining):
     total = stream.filesize or 0
@@ -17,16 +20,18 @@ def on_progress(stream, chunk, bytes_remaining):
         bar_len = 30
         filled = int(bar_len * pct / 100)
         bar = "█" * filled + "·" * (bar_len - filled)
-        print(f"\r[{bar}] {pct:5.1f}%  {downloaded/1_048_576:.2f}/{total/1_048_576:.2f} MiB", end="", flush=True)
+        # Using logger.info for progress, but it might be too verbose for console
+        # For a cleaner console, this could be removed or handled differently
+        logger.info(f"\r[{bar}] {pct:5.1f}%  {downloaded/1_048_576:.2f}/{total/1_048_176:.2f} MiB", extra={'end': ''})
 
 def safe_filename(title: str) -> str:
-    bad = '<>:\"/\\|?*'
+    bad = '<>:"/\\|?*'
     cleaned = "".join(c for c in title if c not in bad)
     return cleaned.strip()[:120] or "video"
 
 def get_video_streams(url: str):
     """Gets available video and audio streams for a YouTube video."""
-    print(f"\n=== Getting streams for: {url}")
+    logger.info(f"Getting streams for: {url}")
     yt = YouTube(url)
     stream_options = []
     
@@ -62,7 +67,7 @@ def get_video_streams(url: str):
 
 def download_video(url: str, out_dir: Path, itag: int):
     """Downloads a stream by itag, merging with ffmpeg if necessary."""
-    print(f"\n=== Processing: {url} with itag: {itag}")
+    logger.info(f"Processing: {url} with itag: {itag}")
     yt = YouTube(url, on_progress_callback=on_progress)
     stream = yt.streams.get_by_itag(itag)
 
@@ -74,24 +79,24 @@ def download_video(url: str, out_dir: Path, itag: int):
     
     # Case 1: The selected stream is audio-only
     if stream.type == "audio":
-        print("\nDownloading audio stream...")
+        logger.info("Downloading audio stream...")
         filepath = stream.download(output_path=str(out_dir), filename=f"{target_name}.m4a")
-        print(f"\nГотово: {filepath}")
+        logger.info(f"Готово: {filepath}")
         return filepath
 
     # Case 2: The selected stream is progressive (video+audio)
     if stream.is_progressive:
-        print("\nDownloading progressive video stream...")
+        logger.info("Downloading progressive video stream...")
         filepath = stream.download(output_path=str(out_dir), filename=f"{target_name}.mp4")
-        print(f"\nГотово: {filepath}")
+        logger.info(f"Готово: {filepath}")
         return filepath
 
     # Case 3: The selected stream is adaptive (video-only), requires merging
-    print("\nDownloading adaptive video stream (merging required)...")
+    logger.info("Downloading adaptive video stream (merging required)...")
     
     # 1. Download video-only stream
     video_temp_path = stream.download(output_path=str(out_dir), filename_prefix="video_")
-    print("\nVideo part downloaded. Now downloading audio part.")
+    logger.info("Video part downloaded. Now downloading audio part.")
 
     # 2. Download best audio stream
     audio_stream = yt.streams.filter(file_extension="mp4", type="audio").order_by("abr").desc().first()
@@ -100,7 +105,7 @@ def download_video(url: str, out_dir: Path, itag: int):
         raise RuntimeError("No audio stream found to merge.")
     
     audio_temp_path = audio_stream.download(output_path=str(out_dir), filename_prefix="audio_")
-    print("\nAudio part downloaded. Now merging...")
+    logger.info("Audio part downloaded. Now merging...")
 
     # 3. Merge using ffmpeg
     final_path = out_dir / f"{target_name}.mp4"
@@ -132,7 +137,7 @@ def download_video(url: str, out_dir: Path, itag: int):
     os.remove(video_temp_path)
     os.remove(audio_temp_path)
 
-    print(f"\nГотово: {final_path}")
+    logger.info(f"Готово: {final_path}")
     return str(final_path)
 
 def process_youtube_url(url: str, out_dir: str = "downloads", itag: int = None):
@@ -146,24 +151,24 @@ def process_youtube_url(url: str, out_dir: str = "downloads", itag: int = None):
     except (AgeRestrictedError, VideoUnavailable, RegexMatchError, PytubeFixError) as e:
         # Handle specific pytube errors
         error_message = f"A YouTube-related error occurred: {e}"
-        print(f"\n{error_message}")
+        logger.info(f"YouTube-related error: {e}")
         raise RuntimeError(error_message) from e
     except Exception as e:
         # Handle other errors like ffmpeg issues or file errors
-        print(f"\nAn unexpected error occurred: {e}")
+        logger.info(f"An unexpected error occurred: {e}")
         raise e
 
 if __name__ == "__main__":
     # Example usage (for testing)
     test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-    print(f"Getting streams for {test_url}")
+    logger.info(f"Getting streams for {test_url}")
     streams, title = get_video_streams(test_url)
-    print(f"Title: {title}")
+    logger.info(f"Title: {title}")
     for s in streams:
-        print(s)
+        logger.info(s)
     
     # To test download, uncomment below and set an itag from the list printed above
     if streams:
         test_itag = streams[0]['itag'] # e.g., download the first option
-        print(f"\nTesting download with itag {test_itag}...")
+        logger.info(f"Testing download with itag {test_itag}...")
         process_youtube_url(test_url, itag=test_itag)
