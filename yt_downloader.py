@@ -25,7 +25,7 @@ def on_progress(stream, chunk, bytes_remaining):
         logger.info(f"\r[{bar}] {pct:5.1f}%  {downloaded/1_048_576:.2f}/{total/1_048_176:.2f} MiB", extra={'end': ''})
 
 def safe_filename(title: str) -> str:
-    bad = '<>:\"/\\|?*'
+    bad = '<>:"/\\|?*'
     cleaned = "".join(c for c in title if c not in bad)
     return cleaned.strip()[:120] or "video"
 
@@ -127,7 +127,7 @@ def download_video(url: str, out_dir: Path, itag: int):
     except subprocess.CalledProcessError as e:
         os.remove(video_temp_path)
         os.remove(audio_temp_path)
-        raise RuntimeError(f"ffmpeg failed to merge files. Error: {e.stderr}")
+        raise RuntimeError(f"ffmpeg failed to merge files. STDERR: {e.stderr} STDOUT: {e.stdout}")
 
     # 4. Clean up temporary files
     os.remove(video_temp_path)
