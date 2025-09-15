@@ -128,7 +128,6 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
             await context.bot.send_document(
                 chat_id=query.message.chat_id,
                 document=video_if,
-                supports_streaming=True,
                 read_timeout=3600,
                 write_timeout=3600,
                 connect_timeout=3600,
