@@ -16,6 +16,14 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 DOWNLOAD_DIR = Path("downloads")
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
+# Настройка логирования
+import logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
 
 async def start(update: Update, context: CallbackContext) -> None:
     """Отправляет приветственное сообщение."""
@@ -80,8 +88,19 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
         if not url:
             await query.edit_message_text("❌ Ошибка: URL видео не найден. Пожалуйста, отправьте ссылку заново.")
             return
+        
+        # Re-fetch streams to get details of the selected format
+        streams, _ = get_video_streams(url)
+        selected_format_text = "неизвестный формат"
+        for stream_info in streams:
+            if stream_info['itag'] == itag:
+                if stream_info['type'] == 'video':
+                    selected_format_text = f"📹 {stream_info['resolution']}"
+                else:
+                    selected_format_text = f"🎵 {stream_info['abr']}"
+                break
 
-        await query.edit_message_text("⏳ Начинаю скачивание... Это может занять некоторое время.")
+        await query.edit_message_text(f"⏳ Начинаю скачивание ({selected_format_text})... Это может занять некоторое время.")
 
         output_path = process_youtube_url(url, DOWNLOAD_DIR, itag=itag)
 
@@ -89,24 +108,26 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
              await query.edit_message_text("❌ Не удалось скачать видео.")
              return
 
+        logger.info(f"Attempting to send video: {output_path} to chat_id: {query.message.chat_id}")
         await query.edit_message_text("⬆️ Отправляю видео...")
         
         with open(output_path, "rb") as video_file:
             await context.bot.send_document(
                 chat_id=query.message.chat_id, 
                 document=video_file, 
-                read_timeout=120, 
-                write_timeout=120,
-                connect_timeout=120,
+                read_timeout=1800, 
+                write_timeout=1800,
+                connect_timeout=1800,
             )
+        logger.info(f"Video {output_path} sent successfully.")
 
         os.remove(output_path)
+        logger.info(f"Removed temporary file: {output_path}")
         await query.edit_message_text("✅ Готово!")
 
     except Exception as e:
+        logger.exception(f"Error during download_selection for query data: {query.data}")
         error_message = f"❌ Произошла ошибка: {e}"
-        if hasattr(e, 'stderr') and e.stderr:
-            error_message += f"\n---LOG---\n{e.stderr.decode()}"
         await query.edit_message_text(error_message)
     finally:
         # Clean up user_data
@@ -124,7 +145,7 @@ async def post_init(application: Application) -> None:
 def main() -> None:
     """Запускает бота."""
     if not TELEGRAM_BOT_TOKEN:
-        print("Ошибка: Токен TELEGRAM_BOT_TOKEN не найден в .env файле.")
+        logger.error("Ошибка: Токен TELEGRAM_BOT_TOKEN не найден в .env файле.")
         return
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
@@ -133,7 +154,7 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(download_selection))
 
-    print("Бот запущен...")
+    logger.info("Бот запущен...")
     application.run_polling()
 
 
