@@ -125,9 +125,9 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
         # и ставим read_file_handle=False для потоковой передачи
         with open(output_path, "rb") as fh:
             video_if = InputFile(fh, filename=safe_name)
-            await context.bot.send_video(
+            await context.bot.send_document(
                 chat_id=query.message.chat_id,
-                video=video_if,
+                document=video_if,
                 supports_streaming=True,
                 read_timeout=3600,
                 write_timeout=3600,
