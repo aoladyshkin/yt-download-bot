@@ -138,7 +138,7 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
             os.remove(output_path)
         except Exception:
             logger.warning("Temp file remove failed", exc_info=True)
-        await query.edit_message_text("✅ Готово!")
+        await query.edit_message_text(f"✅ Готово! Видео скачано (📹 {selected_format_text}).")
 
     except Exception as e:
         logger.exception(f"Error during download_selection for query data: {query.data}")
