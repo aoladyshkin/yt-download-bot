@@ -112,6 +112,7 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
         await query.edit_message_text("⬆️ Отправляю видео...")
         
         with open(output_path, "rb") as video_file:
+            logger.info("Starting video upload...")
             await context.bot.send_document(
                 chat_id=query.message.chat_id, 
                 document=video_file, 
