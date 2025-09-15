@@ -116,15 +116,14 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
         logger.info(f"Attempting to send video: {output_path} to chat_id: {query.message.chat_id}")
         await query.edit_message_text("⬆️ Отправляю видео...")
         
-        with open(output_path, "rb") as video_file:
-            logger.info("Starting video upload...")
-            await context.bot.send_document(
-                chat_id=query.message.chat_id, 
-                document=video_file, 
-                read_timeout=3600, 
-                write_timeout=3600,
-                connect_timeout=3600,
-            )
+        logger.info("Starting video upload...")
+        await context.bot.send_document(
+            chat_id=query.message.chat_id, 
+            document=output_path, 
+            read_timeout=3600, 
+            write_timeout=3600,
+            connect_timeout=3600,
+        )
         logger.info(f"Video {output_path} sent successfully.")
 
         os.remove(output_path)
