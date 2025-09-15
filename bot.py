@@ -3,7 +3,7 @@ import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
 
 from yt_downloader import process_youtube_url, get_video_streams
@@ -113,21 +113,31 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
             await query.edit_message_text("❌ Ошибка: Файл слишком большой для отправки через Telegram (больше 2 ГБ).")
             return
 
+        # Безопасное имя файла (иногда экзотика в заголовках ломает multipart)
+        safe_name = Path(output_path).name.encode('utf-8', 'ignore').decode('utf-8')
+
         logger.info(f"Attempting to send video: {output_path} to chat_id: {query.message.chat_id}")
         await query.edit_message_text("⬆️ Отправляю видео...")
-        
-        logger.info("Starting video upload...")
-        await context.bot.send_document(
-            chat_id=query.message.chat_id, 
-            document=output_path, 
-            read_timeout=3600, 
-            write_timeout=3600,
-            connect_timeout=3600,
-        )
-        logger.info(f"Video {output_path} sent successfully.")
 
-        os.remove(output_path)
-        logger.info(f"Removed temporary file: {output_path}")
+        logger.info("Starting video upload...")
+
+        # ВАЖНО: держим файл открытым на время await,
+        # и ставим read_file_handle=False для потоковой передачи
+        with open(output_path, "rb") as fh:
+            video_if = InputFile(fh, filename=safe_name, read_file_handle=False)
+            await context.bot.send_video(
+                chat_id=query.message.chat_id,
+                video=video_if,
+                supports_streaming=True,
+                read_timeout=3600,
+                write_timeout=3600,
+                connect_timeout=3600,
+            )
+        logger.info("Video sent OK")
+        try:
+            os.remove(output_path)
+        except Exception:
+            logger.warning("Temp file remove failed", exc_info=True)
         await query.edit_message_text("✅ Готово!")
 
     except Exception as e:
