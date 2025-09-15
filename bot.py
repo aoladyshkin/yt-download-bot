@@ -94,10 +94,11 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
         selected_format_text = "неизвестный формат"
         for stream_info in streams:
             if stream_info['itag'] == itag:
+                filesize_mb = stream_info.get('filesize', 0) / 1_048_576
                 if stream_info['type'] == 'video':
-                    selected_format_text = f"📹 {stream_info['resolution']}"
+                    selected_format_text = f"📹 {stream_info['resolution']} / {filesize_mb:.1f} MB"
                 else:
-                    selected_format_text = f"🎵 {stream_info['abr']}"
+                    selected_format_text = f"🎵 {stream_info['abr']} / {filesize_mb:.1f} MB"
                 break
 
         await query.edit_message_text(f"⏳ Начинаю скачивание ({selected_format_text})... Это может занять некоторое время.")
