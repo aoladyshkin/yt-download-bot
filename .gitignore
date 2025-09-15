@@ -2,3 +2,4 @@
 /.env
 /downloads
 /venv
+/__pycache__

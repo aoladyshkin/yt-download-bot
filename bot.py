@@ -96,9 +96,9 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
             if stream_info['itag'] == itag:
                 filesize_mb = stream_info.get('filesize', 0) / 1_048_576
                 if stream_info['type'] == 'video':
-                    selected_format_text = f"📹 {stream_info['resolution']} / {filesize_mb:.1f} MB"
+                    selected_format_text = f"📹 {stream_info['resolution']} | {filesize_mb:.1f} MB"
                 else:
-                    selected_format_text = f"🎵 {stream_info['abr']} / {filesize_mb:.1f} MB"
+                    selected_format_text = f"🎵 {stream_info['abr']} | {filesize_mb:.1f} MB"
                 break
 
         await query.edit_message_text(f"⏳ Начинаю скачивание ({selected_format_text})... Это может занять некоторое время.")
@@ -165,7 +165,7 @@ def main() -> None:
         logger.error("Ошибка: Токен TELEGRAM_BOT_TOKEN не найден в .env файле.")
         return
 
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).base_url("http://telegram-bot-api:8081/bot").base_file_url("http://telegram-bot-api:8081/file/bot").build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
