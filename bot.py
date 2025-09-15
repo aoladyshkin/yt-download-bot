@@ -124,7 +124,7 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
         # ВАЖНО: держим файл открытым на время await,
         # и ставим read_file_handle=False для потоковой передачи
         with open(output_path, "rb") as fh:
-            video_if = InputFile(fh, filename=safe_name, read_file_handle=False)
+            video_if = InputFile(fh, filename=safe_name)
             await context.bot.send_video(
                 chat_id=query.message.chat_id,
                 video=video_if,
