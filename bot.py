@@ -108,6 +108,11 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
              await query.edit_message_text("❌ Не удалось скачать видео.")
              return
 
+        file_size = os.path.getsize(output_path)
+        if file_size > 2 * 1024 * 1024 * 1024:
+            await query.edit_message_text("❌ Ошибка: Файл слишком большой для отправки через Telegram (больше 2 ГБ).")
+            return
+
         logger.info(f"Attempting to send video: {output_path} to chat_id: {query.message.chat_id}")
         await query.edit_message_text("⬆️ Отправляю видео...")
         
@@ -116,9 +121,9 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
             await context.bot.send_document(
                 chat_id=query.message.chat_id, 
                 document=video_file, 
-                read_timeout=1800, 
-                write_timeout=1800,
-                connect_timeout=1800,
+                read_timeout=3600, 
+                write_timeout=3600,
+                connect_timeout=3600,
             )
         logger.info(f"Video {output_path} sent successfully.")
 
