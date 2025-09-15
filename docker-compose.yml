@@ -21,7 +21,8 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
     volumes:
       - .:/app
-      - ./downloads:/app/downloads
+      - yt-downloads:/app/downloads
 
 volumes:
   telegram-bot-api-data:
+  yt-downloads:
