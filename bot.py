@@ -128,6 +128,8 @@ async def download_selection(update: Update, context: CallbackContext) -> None:
     except Exception as e:
         logger.exception(f"Error during download_selection for query data: {query.data}")
         error_message = f"❌ Произошла ошибка: {e}"
+        if len(error_message) > 400:
+            error_message = error_message[:400] + "..."
         await query.edit_message_text(error_message)
     finally:
         # Clean up user_data
