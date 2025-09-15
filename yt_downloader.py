@@ -25,7 +25,7 @@ def on_progress(stream, chunk, bytes_remaining):
         logger.info(f"\r[{bar}] {pct:5.1f}%  {downloaded/1_048_576:.2f}/{total/1_048_176:.2f} MiB", extra={'end': ''})
 
 def safe_filename(title: str) -> str:
-    bad = '<>:"/\\|?*'
+    bad = '<>:\"/\\|?*'
     cleaned = "".join(c for c in title if c not in bad)
     return cleaned.strip()[:120] or "video"
 
@@ -115,12 +115,8 @@ def download_video(url: str, out_dir: Path, itag: int):
         '-y',  # Overwrite output file if it exists
         '-i', video_temp_path,
         '-i', audio_temp_path,
-        '-c:v', 'libx264',
-        '-preset', 'medium',
-        '-crf', '23',
-        '-c:a', 'aac',
-        '-b:a', '128k',
-        '-pix_fmt', 'yuv420p',
+        '-c:v', 'copy',
+        '-c:a', 'copy',
         str(final_path)
     ]
     
