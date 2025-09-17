@@ -5,7 +5,7 @@ This is a Telegram bot that allows users to download YouTube videos.
 ## Features
 
 - Download YouTube videos by sending a link.
-- Choose from available video resolutions (up to 720p).
+- Choose from available video resolutions.
 - The bot downloads the video and sends it back to the user.
 
 ## How to Run
