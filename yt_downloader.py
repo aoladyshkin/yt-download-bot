@@ -25,22 +25,25 @@ def on_progress(stream, chunk, bytes_remaining):
         logger.info(f"\r[{bar}] {pct:5.1f}%  {downloaded/1_048_576:.2f}/{total/1_048_176:.2f} MiB", extra={'end': ''})
 
 def safe_filename(title: str) -> str:
-    bad = '<>:"/\\|?*'
+    bad = '<>:\"/\\|?*'
     cleaned = "".join(c for c in title if c not in bad)
     return cleaned.strip()[:120] or "video"
 
 def get_video_streams(url: str):
-    """Gets available video and audio streams for a YouTube video."""
-    logger.info(f"Getting streams for: {url}")
+    """Gets available H.264 video streams for a YouTube video."""
+    logger.info(f"Getting H.264 streams for: {url}")
     yt = YouTube(url)
     stream_options = []
     
     audio_streams = yt.streams.filter(file_extension="mp4", only_audio=True).order_by("abr").desc()
     best_audio = audio_streams.first() if audio_streams else None
     
-    video_streams = yt.streams.filter(file_extension="mp4", type="video").order_by("resolution").desc()
+    # Get all MP4 video streams and filter for H.264 codec
+    all_video_streams = yt.streams.filter(file_extension="mp4", type="video").order_by("resolution").desc()
+    compatible_streams = [s for s in all_video_streams if s.video_codec and s.video_codec.startswith('avc')]
+
     added_resolutions = set()
-    for stream in video_streams:
+    for stream in compatible_streams:
         if stream.resolution and stream.resolution not in added_resolutions:
             filesize = stream.filesize or 0
             # Add audio filesize for adaptive streams to show a more realistic total size
