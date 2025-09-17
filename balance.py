@@ -1,48 +1,86 @@
 
-import json
+import sqlite3
 from pathlib import Path
+import logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-BALANCES_FILE = Path("balances.json")
+DB_FILE = Path("balances.db")
 STARTING_BALANCE = 10  # Credits for new users
 
-def load_balances():
-    """Loads user balances from the JSON file."""
-    if not BALANCES_FILE.exists():
-        return {}
-    with open(BALANCES_FILE, "r") as f:
-        try:
-            return json.load(f)
-        except json.JSONDecodeError:
-            return {}
+def init_db():
+    """Initializes the database and creates the users table if it doesn't exist."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                balance INTEGER NOT NULL
+            )
+        """)
+        conn.commit()
 
-def save_balances(balances):
-    """Saves the balances dictionary to the JSON file."""
-    with open(BALANCES_FILE, "w") as f:
-        json.dump(balances, f, indent=4)
+def get_balance(user_id: int) -> int:
+    """Gets a user's balance, creating a new record if they are new."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+        result = cursor.fetchone()
+        
+        if result:
+            return result[0]
+        else:
+            # User not found, create a new entry
+            cursor.execute(
+                "INSERT INTO users (user_id, balance) VALUES (?, ?)", 
+                (user_id, STARTING_BALANCE)
+            )
+            conn.commit()
+            return STARTING_BALANCE
 
-def get_balance(user_id):
-    """Gets a user's balance, giving a starting balance if they are new."""
-    balances = load_balances()
-    user_id_str = str(user_id)
-    if user_id_str not in balances:
-        balances[user_id_str] = STARTING_BALANCE
-        save_balances(balances)
-    return balances[user_id_str]
-
-def update_balance(user_id, cost):
+def update_balance(user_id: int, cost: int) -> bool:
     """
-    Updates a user's balance by deducting the cost.
+    Updates a user's balance by deducting the cost in a transaction-safe way.
     Returns True if the balance was sufficient, False otherwise.
     """
-    balances = load_balances()
-    user_id_str = str(user_id)
-    current_balance = balances.get(user_id_str, 0)
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        try:
+            # Get current balance
+            cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+            result = cursor.fetchone()
+            
+            current_balance = 0
+            if result:
+                current_balance = result[0]
+            else:
+                # This case should ideally not be hit if get_balance is always called first
+                # But as a fallback, we can create the user.
+                cursor.execute(
+                    "INSERT INTO users (user_id, balance) VALUES (?, ?)", 
+                    (user_id, STARTING_BALANCE)
+                )
+                current_balance = STARTING_BALANCE
 
-    if current_balance >= cost:
-        balances[user_id_str] = current_balance - cost
-        save_balances(balances)
-        return True
-    return False
+            if current_balance >= cost:
+                new_balance = current_balance - cost
+                cursor.execute(
+                    "UPDATE users SET balance = ? WHERE user_id = ?", 
+                    (new_balance, user_id)
+                )
+                conn.commit()
+                return True
+            else:
+                # Not enough balance, roll back any potential changes (like user creation)
+                conn.rollback()
+                return False
+        except sqlite3.Error as e:
+            logger.error(f"Database error: {e}")
+            conn.rollback()
+            return False
 
 def calculate_video_cost(resolution: str, filesize_mb: int) -> int:
     # Настраиваемые параметры:
@@ -96,4 +134,7 @@ def calculate_video_cost(resolution: str, filesize_mb: int) -> int:
     # Итоговая цена
     final_cost = round(base_cost * multiplier)
     return final_cost
+
+# Initialize the database when the module is loaded
+init_db()
 
