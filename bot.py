@@ -15,6 +15,7 @@ from queue_manager import add_to_queue, queue_processor
 # Загружаем переменные окружения
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+ADMIN_USER_IDS = [int(x) for x in os.getenv("ADMIN_USER_IDS", "").split(",") if x]
 
 # Директория для скачивания
 DOWNLOAD_DIR = Path("downloads")
@@ -62,6 +63,30 @@ async def topup_command(update: Update, context: CallbackContext) -> None:
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Выберите пакет для пополнения баланса:", reply_markup=reply_markup)
+
+
+async def add_credits_command(update: Update, context: CallbackContext) -> None:
+    """Добавляет кредиты пользователю (только для админов)."""
+    user_id = update.message.from_user.id
+    if user_id not in ADMIN_USER_IDS:
+        await update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        return
+
+    try:
+        _, target_user_id_str, amount_str = update.message.text.split()
+        target_user_id = int(target_user_id_str)
+        amount = int(amount_str)
+    except (ValueError, IndexError):
+        await update.message.reply_text("Использование: /addcredits <user_id> <amount>")
+        return
+
+    add_balance(target_user_id, amount)
+    new_balance = get_balance(target_user_id)
+
+    await update.message.reply_text(
+        f"Пользователю {target_user_id} успешно добавлено {amount} кредитов.\n"
+        f"Новый баланс: {new_balance} кредитов."
+    )
 
 
 async def select_package_handler(update: Update, context: CallbackContext) -> None:
@@ -278,6 +303,15 @@ async def post_init(application: Application) -> None:
         BotCommand("balance", "Проверить баланс"),
         BotCommand("topup", "Пополнить баланс"),
     ])
+    # Add admin commands separately
+    for admin_id in ADMIN_USER_IDS:
+        await application.bot.set_my_commands([
+            BotCommand("start", "Запустить бота"),
+            BotCommand("balance", "Проверить баланс"),
+            BotCommand("topup", "Пополнить баланс"),
+            BotCommand("addcredits", "Добавить кредиты пользователю"),
+        ], scope={"type": "chat", "chat_id": admin_id})
+
     application.bot_data['download_queue'] = deque()
     asyncio.create_task(queue_processor(application))
 
@@ -293,11 +327,12 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(CommandHandler("topup", topup_command))
+    application.add_handler(CommandHandler("addcredits", add_credits_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     # Обработчики для скачивания
     application.add_handler(CallbackQueryHandler(ask_for_confirmation, pattern="^select:"))
-    application.add_handler(CallbackQueryHandler(process_confirmation, pattern="^(confirm|cancel):"))
+    application.add_handler(CallbackQueryHandler(process_confirmation, pattern="^(confirm|cancel):\d+:\d+:."))
 
     # Обработчики для пополнения
     application.add_handler(CallbackQueryHandler(select_package_handler, pattern="^topup:"))
