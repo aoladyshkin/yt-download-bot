@@ -368,7 +368,7 @@ def main() -> None:
     
     # Обработчики для скачивания
     application.add_handler(CallbackQueryHandler(ask_for_confirmation, pattern="^select:"))
-    application.add_handler(CallbackQueryHandler(process_confirmation, pattern="^(confirm|cancel):\d+: \d+:."))
+    application.add_handler(CallbackQueryHandler(process_confirmation, pattern="^(confirm|cancel):\d+:\d+:[0-9a-fA-F-]+"))
 
     # Обработчики для пополнения
     application.add_handler(CallbackQueryHandler(topup_button_handler, pattern="^topup$"))
