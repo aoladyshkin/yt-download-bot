@@ -80,8 +80,28 @@ async def select_topup_method_handler(update: Update, context: CallbackContext) 
         if not cryptopay:
             await query.edit_message_text("Пополнение через CryptoBot временно недоступно.")
             return
-        await query.edit_message_text("Введите сумму в кредитах, которую хотите купить (1 кредит = $0.01):")
+        
+        keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_topup_method")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            "Введите сумму в кредитах, которую хотите купить (1 кредит = $0.01):",
+            reply_markup=reply_markup
+        )
         context.user_data['crypto_topup'] = True
+
+
+async def back_to_topup_method_handler(update: Update, context: CallbackContext) -> None:
+    """Handles the back to topup method button."""
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("⭐️ Telegram Stars", callback_data="topup_method:stars")],
+        [InlineKeyboardButton("💎 CryptoBot", callback_data="topup_method:crypto")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text("Выберите способ пополнения:", reply_markup=reply_markup)
 
 
 async def add_credits_command(update: Update, context: CallbackContext) -> None:
@@ -334,6 +354,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(select_topup_method_handler, pattern="^topup_method:"))
     application.add_handler(CallbackQueryHandler(select_stars_package_handler, pattern="^topup_stars:"))
     application.add_handler(CallbackQueryHandler(lambda update, context: check_crypto_payment_handler(update, context, cryptopay), pattern="^check_crypto_payment:"))
+    application.add_handler(CallbackQueryHandler(back_to_topup_method_handler, pattern="^back_to_topup_method$"))
     application.add_handler(PreCheckoutQueryHandler(precheckout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
 

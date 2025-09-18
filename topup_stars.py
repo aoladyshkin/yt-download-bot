@@ -16,6 +16,7 @@ async def show_stars_packages(message) -> None:
         callback_data = f"topup_stars:{i}"
         keyboard.append([InlineKeyboardButton(text, callback_data=callback_data)])
     
+    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back_to_topup_method")])
     reply_markup = InlineKeyboardMarkup(keyboard)
     await message.edit_text("Выберите пакет для пополнения баланса:", reply_markup=reply_markup)
 
