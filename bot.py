@@ -6,6 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, LabeledPrice
+from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler, PreCheckoutQueryHandler
 
 from yt_downloader import get_video_streams
@@ -305,12 +306,15 @@ async def post_init(application: Application) -> None:
     ])
     # Add admin commands separately
     for admin_id in ADMIN_USER_IDS:
-        await application.bot.set_my_commands([
-            BotCommand("start", "Запустить бота"),
-            BotCommand("balance", "Проверить баланс"),
-            BotCommand("topup", "Пополнить баланс"),
-            BotCommand("addcredits", "Добавить кредиты пользователю"),
-        ], scope={"type": "chat", "chat_id": admin_id})
+        try:
+            await application.bot.set_my_commands([
+                BotCommand("start", "Запустить бота"),
+                BotCommand("balance", "Проверить баланс"),
+                BotCommand("topup", "Пополнить баланс"),
+                BotCommand("addcredits", "Добавить кредиты пользователю"),
+            ], scope={"type": "chat", "chat_id": admin_id})
+        except BadRequest as e:
+            logger.error(f"Failed to set commands for admin {admin_id}: {e}")
 
     application.bot_data['download_queue'] = deque()
     asyncio.create_task(queue_processor(application))
