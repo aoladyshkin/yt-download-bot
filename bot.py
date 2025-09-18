@@ -5,11 +5,11 @@ from collections import deque
 from pathlib import Path
 
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, LabeledPrice
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler, PreCheckoutQueryHandler
 
 from yt_downloader import get_video_streams
-from balance import get_balance, update_balance, calculate_video_cost
+from balance import get_balance, update_balance, calculate_video_cost, add_balance
 from queue_manager import add_to_queue, queue_processor
 
 # Загружаем переменные окружения
@@ -28,6 +28,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Пакеты для пополнения
+TOPUP_PACKAGES = [
+    {"credits": 100, "stars": 50},
+    {"credits": 200, "stars": 90},
+    {"credits": 300, "stars": 130},
+]
+
 
 async def start(update: Update, context: CallbackContext) -> None:
     """Отправляет приветственное сообщение и баланс."""
@@ -43,6 +50,76 @@ async def balance_command(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
     balance = get_balance(user_id)
     await update.message.reply_text(f"Ваш баланс: {balance} кредитов.")
+
+
+async def topup_command(update: Update, context: CallbackContext) -> None:
+    """Показывает варианты пополнения баланса."""
+    keyboard = []
+    for i, package in enumerate(TOPUP_PACKAGES):
+        text = f"{package['credits']} кредитов за {package['stars']} звёзд"
+        callback_data = f"topup:{i}"
+        keyboard.append([InlineKeyboardButton(text, callback_data=callback_data)])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Выберите пакет для пополнения баланса:", reply_markup=reply_markup)
+
+
+async def select_package_handler(update: Update, context: CallbackContext) -> None:
+    """Отправляет инвойс для выбранного пакета."""
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        _, package_index_str = query.data.split(":")
+        package_index = int(package_index_str)
+        package = TOPUP_PACKAGES[package_index]
+
+        title = f"Пополнение на {package['credits']} кредитов"
+        description = f"Покупка {package['credits']} кредитов за {package['stars']} звёзд Telegram Stars"
+        payload = f"topup_{package['credits']}_{package['stars']}"
+        currency = "XTR"
+        prices = [LabeledPrice(label=f"{package['credits']} кредитов", amount=package['stars'])]
+
+        await context.bot.send_invoice(
+            chat_id=query.message.chat_id,
+            title=title,
+            description=description,
+            payload=payload,
+            provider_token=None,  # Не требуется для Telegram Stars
+            currency=currency,
+            prices=prices
+        )
+    except (IndexError, ValueError) as e:
+        logger.error(f"Error in select_package_handler: {e}", exc_info=True)
+        await query.message.reply_text("Произошла ошибка при выборе пакета. Попробуйте снова.")
+
+
+async def precheckout_handler(update: Update, context: CallbackContext) -> None:
+    """Обрабатывает pre-checkout запросы."""
+    query = update.pre_checkout_query
+    if query.invoice_payload.startswith("topup_"):
+        await query.answer(ok=True)
+    else:
+        await query.answer(ok=False, error_message="Что-то пошло не так...")
+
+
+async def successful_payment_handler(update: Update, context: CallbackContext) -> None:
+    """Обрабатывает успешные платежи."""
+    payment_info = update.message.successful_payment
+    payload = payment_info.invoice_payload
+    
+    if payload.startswith("topup_"):
+        _, credits_str, _ = payload.split("_")
+        credits_to_add = int(credits_str)
+        user_id = update.message.from_user.id
+        
+        add_balance(user_id, credits_to_add)
+        new_balance = get_balance(user_id)
+        
+        await update.message.reply_text(
+            f"✅ Платёж прошёл успешно! Ваш баланс пополнен на {credits_to_add} кредитов.\n"
+            f"Новый баланс: {new_balance} кредитов."
+        )
 
 
 async def show_format_selection(update: Update, context: CallbackContext, url: str, message) -> None:
@@ -199,6 +276,7 @@ async def post_init(application: Application) -> None:
     await application.bot.set_my_commands([
         BotCommand("start", "Запустить бота"),
         BotCommand("balance", "Проверить баланс"),
+        BotCommand("topup", "Пополнить баланс"),
     ])
     application.bot_data['download_queue'] = deque()
     asyncio.create_task(queue_processor(application))
@@ -214,12 +292,17 @@ def main() -> None:
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("balance", balance_command))
+    application.add_handler(CommandHandler("topup", topup_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Обработчик для выбора формата
+    # Обработчики для скачивания
     application.add_handler(CallbackQueryHandler(ask_for_confirmation, pattern="^select:"))
-    # Обработчик для подтверждения/отмены
     application.add_handler(CallbackQueryHandler(process_confirmation, pattern="^(confirm|cancel):"))
+
+    # Обработчики для пополнения
+    application.add_handler(CallbackQueryHandler(select_package_handler, pattern="^topup:"))
+    application.add_handler(PreCheckoutQueryHandler(precheckout_handler))
+    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
 
     logger.info("Бот запущен...")
     application.run_polling()
