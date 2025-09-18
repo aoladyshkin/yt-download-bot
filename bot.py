@@ -54,7 +54,14 @@ async def balance_command(update: Update, context: CallbackContext) -> None:
     """Показывает баланс пользователя."""
     user_id = update.message.from_user.id
     balance = get_balance(user_id)
-    await update.message.reply_text(f"Ваш баланс: {balance} кредитов.")
+    
+    keyboard = [[InlineKeyboardButton("Пополнить баланс", callback_data="topup")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"Ваш баланс: {balance} кредитов.",
+        reply_markup=reply_markup
+    )
 
 
 async def topup_command(update: Update, context: CallbackContext) -> None:
@@ -65,6 +72,19 @@ async def topup_command(update: Update, context: CallbackContext) -> None:
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Выберите способ пополнения:", reply_markup=reply_markup)
+
+
+async def topup_button_handler(update: Update, context: CallbackContext) -> None:
+    """Handles the top-up button from the balance message."""
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("⭐️ Telegram Stars", callback_data="topup_method:stars")],
+        [InlineKeyboardButton("💎 CryptoBot", callback_data="topup_method:crypto")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text("Выберите способ пополнения:", reply_markup=reply_markup)
 
 
 async def select_topup_method_handler(update: Update, context: CallbackContext) -> None:
@@ -351,6 +371,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(process_confirmation, pattern="^(confirm|cancel):\d+: \d+:."))
 
     # Обработчики для пополнения
+    application.add_handler(CallbackQueryHandler(topup_button_handler, pattern="^topup$"))
     application.add_handler(CallbackQueryHandler(select_topup_method_handler, pattern="^topup_method:"))
     application.add_handler(CallbackQueryHandler(select_stars_package_handler, pattern="^topup_stars:"))
     application.add_handler(CallbackQueryHandler(lambda update, context: check_crypto_payment_handler(update, context, cryptopay), pattern="^check_crypto_payment:"))
