@@ -416,6 +416,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from yt_downloader import get_video_streams
 from balance import get_balance, update_balance, calculate_video_cost, add_balance
 from queue_manager import add_to_queue, queue_processor
+from topup_stars import show_stars_packages, select_stars_package_handler
+from topup_crypto import handle_crypto_topup, check_crypto_payment_handler
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -441,20 +443,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Пакеты для пополнения
-TOPUP_PACKAGES = [
-    {"credits": 100, "stars": 50},
-    {"credits": 200, "stars": 90},
-    {"credits": 300, "stars": 130},
-]
-
 
 async def start(update: Update, context: CallbackContext) -> None:
     """Отправляет приветственное сообщение и баланс."""
     user_id = update.message.from_user.id
     balance = get_balance(user_id)
     await update.message.reply_text(
-        "Привет! Отправь мне ссылку на YouTube видео, и я скачаю его для тебя.\n"
+        "Привет! Отправь мне ссылку на YouTube видео, и я скачаю его для тебя.\n" 
         f"Ваш баланс: {balance} кредитов."
     )
 
@@ -492,18 +487,6 @@ async def select_topup_method_handler(update: Update, context: CallbackContext) 
         context.user_data['crypto_topup'] = True
 
 
-async def show_stars_packages(message) -> None:
-    """Показывает пакеты пополнения за Telegram Stars."""
-    keyboard = []
-    for i, package in enumerate(TOPUP_PACKAGES):
-        text = f"{package['credits']} кредитов за {package['stars']} звёзд"
-        callback_data = f"topup_stars:{i}"
-        keyboard.append([InlineKeyboardButton(text, callback_data=callback_data)])
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await message.edit_text("Выберите пакет для пополнения баланса:", reply_markup=reply_markup)
-
-
 async def add_credits_command(update: Update, context: CallbackContext) -> None:
     """Добавляет кредиты пользователю (только для админов)."""
     user_id = update.message.from_user.id
@@ -526,36 +509,6 @@ async def add_credits_command(update: Update, context: CallbackContext) -> None:
         f"Пользователю {target_user_id} успешно добавлено {amount} кредитов.\n"
         f"Новый баланс: {new_balance} кредитов."
     )
-
-
-async def select_stars_package_handler(update: Update, context: CallbackContext) -> None:
-    """Отправляет инвойс для выбранного пакета Stars."""
-    query = update.callback_query
-    await query.answer()
-
-    try:
-        _, package_index_str = query.data.split(":")
-        package_index = int(package_index_str)
-        package = TOPUP_PACKAGES[package_index]
-
-        title = f"Пополнение на {package['credits']} кредитов"
-        description = f"Покупка {package['credits']} кредитов за {package['stars']} звёзд Telegram Stars"
-        payload = f"topup_stars_{package['credits']}_{package['stars']}"
-        currency = "XTR"
-        prices = [LabeledPrice(label=f"{package['credits']} кредитов", amount=package['stars'])]
-
-        await context.bot.send_invoice(
-            chat_id=query.message.chat_id,
-            title=title,
-            description=description,
-            payload=payload,
-            provider_token=None,  # Не требуется для Telegram Stars
-            currency=currency,
-            prices=prices
-        )
-    except (IndexError, ValueError) as e:
-        logger.error(f"Error in select_stars_package_handler: {e}", exc_info=True)
-        await query.message.reply_text("Произошла ошибка при выборе пакета. Попробуйте снова.")
 
 
 async def precheckout_handler(update: Update, context: CallbackContext) -> None:
@@ -636,7 +589,7 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
     """Обрабатывает входящие сообщения."""
     message = update.message
     if context.user_data.get('crypto_topup'):
-        await handle_crypto_topup(update, context)
+        await handle_crypto_topup(update, context, cryptopay)
         return
 
     if not message.text or ("youtube.com/" not in message.text and "youtu.be/" not in message.text):
@@ -646,73 +599,6 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
     url = message.text
     sent_message = await message.reply_text("🔎 Получаю информацию о видео...")
     await show_format_selection(update, context, url, sent_message)
-
-
-async def handle_crypto_topup(update: Update, context: CallbackContext) -> None:
-    """Обрабатывает сумму для пополнения через CryptoBot."""
-    try:
-        amount_credits = int(update.message.text)
-        if amount_credits <= 0:
-            await update.message.reply_text("Сумма должна быть положительной.")
-            return
-
-        amount_usd = amount_credits * 0.01
-        invoice = await cryptopay.create_invoice(asset='USDT', amount=amount_usd)
-        
-        context.user_data['crypto_invoice_id'] = invoice.invoice_id
-        context.user_data['crypto_amount_credits'] = amount_credits
-
-        keyboard = [[InlineKeyboardButton("Проверить пополнение", callback_data=f"check_crypto_payment:{invoice.invoice_id}")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        await update.message.reply_text(
-            f"Для пополнения баланса на {amount_credits} кредитов, "
-            f"оплатите счет по следующей ссылке:\n{invoice.bot_invoice_url}",
-            reply_markup=reply_markup
-        )
-
-    except ValueError:
-        await update.message.reply_text("Пожалуйста, введите корректное число.")
-    except Exception as e:
-        logger.error(f"Error in handle_crypto_topup: {e}", exc_info=True)
-        await update.message.reply_text("Произошла ошибка при создании счета.")
-    finally:
-        if 'crypto_topup' in context.user_data:
-            del context.user_data['crypto_topup']
-
-
-async def check_crypto_payment_handler(update: Update, context: CallbackContext) -> None:
-    """Проверяет статус платежа CryptoBot."""
-    query = update.callback_query
-    await query.answer()
-
-    _, invoice_id = query.data.split(":")
-    invoice_id = int(invoice_id)
-
-    try:
-        invoices = await cryptopay.get_invoices(invoice_ids=invoice_id)
-        invoice = invoices
-
-        if invoice.status == 'paid':
-            user_id = query.from_user.id
-            amount_credits = context.user_data.get('crypto_amount_credits')
-            if amount_credits:
-                add_balance(user_id, amount_credits)
-                new_balance = get_balance(user_id)
-                await query.edit_message_text(
-                    f"✅ Платёж прошёл успешно! Ваш баланс пополнен на {amount_credits} кредитов.\n"
-                    f"Новый баланс: {new_balance} кредитов."
-                )
-                del context.user_data['crypto_invoice_id']
-                del context.user_data['crypto_amount_credits']
-            else:
-                await query.edit_message_text("Произошла ошибка при пополнении. Обратитесь в поддержку.")
-        else:
-            await query.message.reply_text("Платёж еще не подтвержден.")
-
-    except Exception as e:
-        logger.error(f"Error in check_crypto_payment_handler: {e}", exc_info=True)
-        await query.edit_message_text("Произошла ошибка при проверке платежа.")
 
 
 async def ask_for_confirmation(update: Update, context: CallbackContext) -> None:
@@ -850,7 +736,7 @@ def main() -> None:
     # Обработчики для пополнения
     application.add_handler(CallbackQueryHandler(select_topup_method_handler, pattern="^topup_method:"))
     application.add_handler(CallbackQueryHandler(select_stars_package_handler, pattern="^topup_stars:"))
-    application.add_handler(CallbackQueryHandler(check_crypto_payment_handler, pattern="^check_crypto_payment:"))
+    application.add_handler(CallbackQueryHandler(lambda update, context: check_crypto_payment_handler(update, context, cryptopay), pattern="^check_crypto_payment:"))
     application.add_handler(PreCheckoutQueryHandler(precheckout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
 
@@ -860,7 +746,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
     logger.info("Бот запущен...")
     application.run_polling()
 
