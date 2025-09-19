@@ -1,4 +1,3 @@
-
 import sqlite3
 from pathlib import Path
 import logging
@@ -9,7 +8,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 DB_FILE = Path("balances.db")
-STARTING_BALANCE = 10  # Credits for new users
+STARTING_BALANCE = 100  # Credits for new users
 
 def init_db():
     """Initializes the database and creates the users table if it doesn't exist."""
@@ -40,6 +39,27 @@ def get_balance(user_id: int) -> int:
             )
             conn.commit()
             return STARTING_BALANCE
+
+def add_balance(user_id: int, amount: int) -> None:
+    """Adds the specified amount to the user's balance."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+        result = cursor.fetchone()
+        
+        if result:
+            new_balance = result[0] + amount
+            cursor.execute(
+                "UPDATE users SET balance = ? WHERE user_id = ?", 
+                (new_balance, user_id)
+            )
+        else:
+            # User not found, create a new entry with the topped-up balance
+            cursor.execute(
+                "INSERT INTO users (user_id, balance) VALUES (?, ?)", 
+                (user_id, STARTING_BALANCE + amount)
+            )
+        conn.commit()
 
 def update_balance(user_id: int, cost: int) -> bool:
     """
@@ -121,15 +141,15 @@ def calculate_video_cost(resolution: str, filesize_mb: int) -> int:
     if filesize_mb <= 50:
         multiplier = 1
     elif filesize_mb <= 200:
-        multiplier = 1.5
-    elif filesize_mb <= 500:
         multiplier = 2
-    elif filesize_mb <= 1024: # 1GB
+    elif filesize_mb <= 500:
         multiplier = 3
-    elif filesize_mb <= 2048: # 2GB
+    elif filesize_mb <= 1024: # 1GB
         multiplier = 4
-    else:
+    elif filesize_mb <= 2048: # 2GB
         multiplier = 5
+    else:
+        multiplier = 10
 
     # Итоговая цена
     final_cost = round(base_cost * multiplier)
@@ -137,4 +157,3 @@ def calculate_video_cost(resolution: str, filesize_mb: int) -> int:
 
 # Initialize the database when the module is loaded
 init_db()
-
